@@ -242,7 +242,8 @@ try_again:
         if (atomic_load(prev) != get_unmarked(curr))
             goto try_again;
         if (get_unmarked_node(next) == next) {
-            if (!(get_unmarked_node(curr)->key < *key)) {
+            // if (!(get_unmarked_node(curr)->key < *key)) {
+            if ((get_unmarked_node(curr)->key == *key)) {
                 *par_curr = curr; //saving current status
                 *par_prev = prev; //saving current status
                 *par_next = next; //saving current status
@@ -297,7 +298,8 @@ bool list_delete(list_t *list, list_key_t key)
     while (true) {
         if (!__list_find(list, &key, &prev, &curr, &next)) {
             list_hp_clear(list->hp);
-            return false;
+            continue;
+            // return false;
         }
 
         uintptr_t tmp = get_unmarked(next);
@@ -353,8 +355,8 @@ static uintptr_t elements[MAX_THREADS + 1][N_ELEMENTS];
 static void *insert_thread(void *arg)
 {
     list_t *list = (list_t *) arg;
-
-    for (size_t i = 0; i < N_ELEMENTS; i++)
+    pthread_barrier_wait(&barr);
+    for (size_t i = 0; i < N_ELEMENTS; i++) // 128 * 32(64/2)
         (void) list_insert(list, (uintptr_t) &elements[tid()][i]);
     return NULL;
 }
@@ -362,32 +364,57 @@ static void *insert_thread(void *arg)
 static void *delete_thread(void *arg)
 {
     list_t *list = (list_t *) arg;
-
+    pthread_barrier_wait(&barr);
     for (size_t i = 0; i < N_ELEMENTS; i++)
         (void) list_delete(list, (uintptr_t) &elements[tid()-1][i]);
     return NULL;
 }
+
+void list_show(list_t *list)
+{
+    list_node_t *curr = NULL;
+    int cnt = 0;
+    curr = (list_node_t *)list->head;
+    while (true) {
+        printf("curr = %lx\n", curr);
+        curr = (list_node_t *) curr->next;
+        if (curr == (list_node_t *) list->tail)
+            break;
+        cnt ++;
+    }
+    printf("cnt = %d\n", cnt);
+}
+static void showing_list(list_t *list)
+{
+    list_show(list);
+}
+
+
 
 int main(void)
 {
     list_t *list = list_new();
 
     pthread_t thr[N_THREADS];
-
+    pthread_barrier_init(&barr, NULL, (unsigned) N_THREADS);
+    printf("start create thread\n");
     for (size_t i = 0; i < N_THREADS; i++)
         pthread_create(&thr[i], NULL, (i & 1) ? delete_thread : insert_thread,
                        list);
 
     for (size_t i = 0; i < N_THREADS; i++)
         pthread_join(thr[i], NULL);
+    showing_list(list);
+    fprintf(stderr, "inserts = %zu, deletes = %zu\n", atomic_load(&inserts),
+            atomic_load(&deletes));
 
-    for (size_t i = 0; i < N_ELEMENTS; i++) {
-        for (size_t j = 0; j < tid_v_base; j++)
-            list_delete(list, (uintptr_t) &elements[j][i]);
-    }
-
+    // list_hp_clear()
+    // for (size_t i = 0; i < N_ELEMENTS; i++) {
+    //     for (size_t j = 0; j < tid_v_base; j++)
+    //         list_delete(list, (uintptr_t) &elements[j][i]);
+    // }
     list_destroy(list);
-
+    pthread_barrier_destroy(&barr);
     fprintf(stderr, "inserts = %zu, deletes = %zu\n", atomic_load(&inserts),
             atomic_load(&deletes));
 
