@@ -364,7 +364,7 @@ static void *delete_thread(void *arg)
     list_t *list = (list_t *) arg;
 
     for (size_t i = 0; i < N_ELEMENTS; i++)
-        (void) list_delete(list, (uintptr_t) &elements[tid()][i]);
+        (void) list_delete(list, (uintptr_t) &elements[tid()-1][i]);
     return NULL;
 }
 
